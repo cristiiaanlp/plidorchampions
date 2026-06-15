@@ -1155,7 +1155,7 @@ function stepChar(c){
 function stepBall(b){
   b = b || G.ball;
   const M=G.mods;
-  // magnet pull toward whoever has magnet (or everyone during Magnet Mayhem)
+  // ---- forces (applied once per frame) ----
   for(const key of ["p1","p2"]){
     if(G.activeFx[key].magnet || M.magnetAll){
       const c=G[key];
@@ -1166,17 +1166,31 @@ function stepBall(b){
   b.vy+=BALL_GRAV*M.ballGrav;
   b.vx += M.windOsc ? M.wind*Math.sin(G.time*0.035) : M.wind;   // chaos wind (tornado oscillates)
   b.vx*=BALL_AIRDRAG; b.vy*=BALL_AIRDRAG;
-  b.x+=b.vx; b.y+=b.vy; b.rot+=b.vr; b.vr*=0.985;
-  // ground
-  if(b.y+b.r>=GROUND){
-    b.y=GROUND-b.r;
-    if(Math.abs(b.vy)>1.2){ Audio2.SFX.bounce(); spawnParticles(b.x,GROUND,5,{color:"#dddddd",up:0.5,decMin:0.06,decMax:0.1,sizeMin:2,sizeMax:4}); }
-    b.vy*=-BALL_BOUNCE*M.bounce; b.vx*=0.97; b.vr=b.vx*0.04;
+  // ---- sub-stepped integration: move in small slices so a fast ball can't
+  //      tunnel through players or walls (fixes "ball passes through rival") ----
+  const speed=Math.hypot(b.vx,b.vy);
+  const maxStep=Math.max(4, Math.min(b.r, 12));
+  const steps=clamp(Math.ceil(speed/maxStep), 1, 10);
+  for(let s=0;s<steps;s++){
+    b.x += b.vx/steps; b.y += b.vy/steps; b.rot += b.vr/steps;
+    // goal check BEFORE the wall bounce so a rocket into the mouth still counts
+    if(G.celebrate<=0 && checkGoal(b)) return;
+    // ground
+    if(b.y+b.r>=GROUND){
+      b.y=GROUND-b.r;
+      if(Math.abs(b.vy)>1.2){ Audio2.SFX.bounce(); spawnParticles(b.x,GROUND,5,{color:"#dddddd",up:0.5,decMin:0.06,decMax:0.1,sizeMin:2,sizeMax:4}); }
+      b.vy*=-BALL_BOUNCE*M.bounce; b.vx*=0.97; b.vr=b.vx*0.04;
+    }
+    // ceiling
+    if(b.y-b.r<0){ b.y=b.r; b.vy*=-BALL_BOUNCE*M.bounce; }
+    // side walls (with goal mouths)
+    handleWalls(b);
+    // player collisions every sub-step (this is what stops tunnelling)
+    if(G.p1) charBall(G.p1,b);
+    if(G.p2) charBall(G.p2,b);
   }
-  // ceiling
-  if(b.y-b.r<0){ b.y=b.r; b.vy*=-BALL_BOUNCE*M.bounce; }
-  // side walls (with goal mouths)
-  handleWalls(b);
+  b.vr*=0.985;
+  // ---- timers + fx (once per frame) ----
   if(b.onFire>0){ b.onFire--; if(b.y<GROUND-b.r-2) spawnParticles(b.x,b.y,2,{color:pick(["#ff5a1f","#ffb347","#ffe14d"]),grav:-0.05,decMin:0.05,decMax:0.1,sizeMin:3,sizeMax:7}); }
   if(b.magnet>0) b.magnet--;
   // ball trail
@@ -1213,10 +1227,8 @@ function collideBar(b, bx, by, bw, bh){
 }
 
 function handleCollisions(){
-  // character vs every ball (heading / body)
-  for(const c of [G.p1,G.p2])
-    for(const b of allBalls()) charBall(c,b);
-  // char vs char (bump)
+  // character-vs-ball is resolved per sub-step inside stepBall (anti-tunnelling);
+  // here we only need character-vs-character bumping.
   charChar(G.p1,G.p2);
 }
 function charBall(c,b){
