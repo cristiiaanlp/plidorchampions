@@ -15,9 +15,10 @@
     --green:#33cc77;
     --blue:#2aa9ff;
     --dark:#14213d;
-    --tb:clamp(58px,14vmin,92px);   /* move/jump button size */
-    --tk:clamp(72px,17vmin,112px);  /* kick button size */
-    --tpad:16px;
+    --tb:clamp(68px,16vmin,104px);   /* move/jump button size */
+    --tk:clamp(88px,20vmin,132px);   /* kick button size */
+    --tpad:22px;
+    --tgap:20px;                     /* spacing between buttons */
     --sl:env(safe-area-inset-left,0px);
     --sr:env(safe-area-inset-right,0px);
     --sbm:env(safe-area-inset-bottom,0px);
@@ -128,30 +129,37 @@
   #touch.active{display:block;}
   .tbtn{
     position:absolute;width:var(--tb);height:var(--tb);border-radius:50%;
-    bottom:calc(var(--sbm) + 16px);
-    background:rgba(255,255,255,.18);border:3px solid rgba(255,255,255,.45);
+    bottom:calc(var(--sbm) + 20px);
+    background:rgba(255,255,255,.26);border:3px solid rgba(255,255,255,.6);
     display:flex;align-items:center;justify-content:center;
-    font-size:clamp(24px,6vmin,34px);font-weight:bold;
+    font-size:clamp(26px,6.5vmin,38px);font-weight:bold;
     pointer-events:auto;color:#fff;backdrop-filter:blur(2px);
+    box-shadow:0 4px 10px rgba(0,0,0,.35);
     transition:transform .05s, background .05s;
-    -webkit-user-select:none;user-select:none;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+    touch-action:none;
   }
-  .tbtn:active{background:rgba(255,204,51,.6);transform:scale(.9);}
+  .tbtn:active,.tbtn.pressed{background:rgba(255,204,51,.7);transform:scale(.92);}
+  /* left thumb: move pad bottom-left */
   #t-left{left:calc(var(--sl) + var(--tpad));}
-  #t-right{left:calc(var(--sl) + var(--tpad) + var(--tb) + 14px);}
-  #t-jump{right:calc(var(--sr) + var(--tpad) + var(--tk) + 14px);}
+  #t-right{left:calc(var(--sl) + var(--tpad) + var(--tb) + var(--tgap));}
+  /* right thumb: jump + kick bottom-right (kick is the big primary button) */
   #t-kick{
     right:calc(var(--sr) + var(--tpad));
     width:var(--tk);height:var(--tk);
-    bottom:calc(var(--sbm) + 12px);
-    background:rgba(255,90,95,.42);border-color:rgba(255,255,255,.6);
-    font-size:clamp(30px,8vmin,42px);
+    bottom:calc(var(--sbm) + 16px);
+    background:rgba(255,90,95,.55);border-color:rgba(255,255,255,.7);
+    font-size:clamp(34px,8.5vmin,46px);
+  }
+  #t-jump{
+    right:calc(var(--sr) + var(--tpad) + var(--tk) + var(--tgap));
+    background:rgba(70,200,255,.34);
   }
   #t-taunt{
-    right:calc(var(--sr) + var(--tpad) + var(--tk) + 14px);
-    bottom:calc(var(--sbm) + var(--tb) + 30px);
-    width:calc(var(--tb)*0.8);height:calc(var(--tb)*0.8);
-    background:rgba(255,255,255,.12);font-size:clamp(20px,5vmin,28px);
+    right:calc(var(--sr) + var(--tpad) + var(--tk) + var(--tgap));
+    bottom:calc(var(--sbm) + var(--tb) + 36px);
+    width:calc(var(--tb)*0.78);height:calc(var(--tb)*0.78);
+    background:rgba(255,255,255,.16);font-size:clamp(20px,5vmin,28px);
   }
   /* rotate-to-landscape prompt (touch + portrait) */
   #rotate{
@@ -1212,12 +1220,18 @@ function matchStep(input){
   }
   if(G.celebrate>0){
     G.celebrate--;
-    for(const b of allBalls()) stepBall(b); // ball keeps rolling during celebration
-    updateActiveFx();
     if(G.celebrate===0){
+      // celebration just ended: reset the ball to centre FIRST, and do NOT step
+      // the ball this frame — otherwise stepBall() would run checkGoal() while the
+      // ball is still sitting inside the net, re-trigger onGoal() and loop forever
+      // ("stuck ball / infinite goals" bug).
+      updateActiveFx();
       if(checkMatchEnd()) return;
       resetBall(G.celebrateData.scorer==="p1"?"R":"L");
       G.started=false; G.startCountdown=2*60;
+    } else {
+      for(const b of allBalls()) stepBall(b); // ball keeps rolling during celebration
+      updateActiveFx();
     }
     return;
   }
@@ -2896,21 +2910,52 @@ window.addEventListener("keydown",e=>{
 window.addEventListener("keyup",e=>{ keys[e.key.toLowerCase()]=false; });
 // kick should be edge-triggered to avoid auto-spam; handle via cooldown in tryKick (kickCooldown), continuous ok.
 
-// touch buttons
-function bindTouch(id,prop){
-  const el=$(id);
-  const on=e=>{ e.preventDefault(); touchState[prop]=true; Audio2.resume(); };
-  const off=e=>{ e.preventDefault(); touchState[prop]=false; };
-  el.addEventListener("touchstart",on,{passive:false});
-  el.addEventListener("touchend",off,{passive:false});
-  el.addEventListener("touchcancel",off,{passive:false});
-  el.addEventListener("mousedown",on);
-  el.addEventListener("mouseup",off);
-  el.addEventListener("mouseleave",off);
+// ---- touch buttons: global hit-testing ----
+// Per-element touch listeners drop events when a finger slides off a button or
+// when two buttons are pressed at once, which left controls stuck or unresponsive.
+// Instead we track every active pointer against the live button rects each frame,
+// so multi-touch and finger-slides between buttons always resolve correctly.
+const TBTNS=[{id:"t-left",prop:"left"},{id:"t-right",prop:"right"},{id:"t-jump",prop:"jump"},{id:"t-kick",prop:"kick"}];
+const tauntEl=$("t-taunt");
+let tauntHeld=false;
+function pointInBtn(x,y,el,pad){
+  const r=el.getBoundingClientRect();
+  if(r.width===0) return false;
+  const cx=r.left+r.width/2, cy=r.top+r.height/2, rad=r.width/2+(pad||0);
+  return (x-cx)*(x-cx)+(y-cy)*(y-cy) <= rad*rad;
 }
-bindTouch("t-left","left"); bindTouch("t-right","right"); bindTouch("t-jump","jump"); bindTouch("t-kick","kick");
-// taunt button (edge-triggered, not a held control)
-(function(){ const el=$("t-taunt"); if(!el) return; const fire=e=>{ e.preventDefault(); if(G) doTaunt(G.p1); }; el.addEventListener("touchstart",fire,{passive:false}); el.addEventListener("mousedown",fire); })();
+function applyPointers(points){   // points: [{x,y}, …] — every active finger/cursor
+  // controls are live only during an actual match — keeps taps on the pause panel
+  // / menus clean and never leaves a button stuck when leaving the match
+  if(gameState!==State.MATCH) points=[];
+  for(const b of TBTNS) touchState[b.prop]=false;
+  let taunt=false, engaged=false;
+  for(const p of points){
+    for(const b of TBTNS){ const el=$(b.id); if(el && pointInBtn(p.x,p.y,el,14)){ touchState[b.prop]=true; engaged=true; } }
+    if(tauntEl && pointInBtn(p.x,p.y,tauntEl,8)){ taunt=true; engaged=true; }
+  }
+  if(taunt && !tauntHeld && G) doTaunt(G.p1);   // edge-triggered taunt
+  tauntHeld=taunt;
+  for(const b of TBTNS){ const el=$(b.id); if(el) el.classList.toggle("pressed", touchState[b.prop]); }
+  if(tauntEl) tauntEl.classList.toggle("pressed", taunt);
+  return engaged;
+}
+function touchPoints(e){ const a=[]; for(const t of e.touches) a.push({x:t.clientX,y:t.clientY}); return a; }
+function onTouch(e){
+  // Only hijack the gesture while a control is actually engaged, so taps on the
+  // pause button / menus still work normally.
+  const engaged=applyPointers(touchPoints(e));
+  if(engaged){ e.preventDefault(); Audio2.resume(); }
+}
+document.addEventListener("touchstart",onTouch,{passive:false});
+document.addEventListener("touchmove",onTouch,{passive:false});
+document.addEventListener("touchend",onTouch,{passive:false});
+document.addEventListener("touchcancel",onTouch,{passive:false});
+// mouse fallback (desktop testing)
+let _mouseDown=false;
+document.addEventListener("mousedown",e=>{ if(applyPointers([{x:e.clientX,y:e.clientY}])){ _mouseDown=true; e.preventDefault(); Audio2.resume(); } });
+document.addEventListener("mousemove",e=>{ if(_mouseDown) applyPointers([{x:e.clientX,y:e.clientY}]); });
+document.addEventListener("mouseup",()=>{ if(_mouseDown){ _mouseDown=false; applyPointers([]); } });
 
 /* ============================================================
    BOOT
