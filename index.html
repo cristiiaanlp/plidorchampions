@@ -1115,8 +1115,10 @@ function tryKick(c){
   if(dist < reach){
     const ang=Math.atan2(dy,dx);
     let power = (13 + (G.activeFx[c===G.p1?"p1":"p2"].fire?9:0)) * G.mods.kickPow;
-    b.vx = Math.cos(ang)*power + c.vx*0.6;
-    b.vy = Math.sin(ang)*power - 5;       // lift
+    // forward drive + a GUARANTEED upward lift on every kick so the ball arcs
+    // (reaches the goal and the airborne power-ups instead of rolling flat)
+    b.vx = Math.cos(ang)*power*0.95 + c.vx*0.55 + c.facing*2;
+    b.vy = -Math.abs(Math.sin(ang)*power*0.7) - power*0.62;   // always lifts up
     b.vr = c.facing*0.4;
     if(G.activeFx[c===G.p1?"p1":"p2"].fire){ b.onFire=120; }
     Audio2.SFX.kick();
@@ -1646,11 +1648,26 @@ function drawCharacter(c, t){
   const sh = 1 - (GROUND-baseY)/200;
   ctx.beginPath(); ctx.ellipse(x,GROUND+6, c.w*0.7*sh, 8*sh,0,0,TAU); ctx.fill();
 
-  // legs (simple animated)
-  const run = Math.abs(c.vx)>0.5 ? Math.sin(t*0.4)*8 : 0;
-  ctx.strokeStyle=shade(c.sk.kit,-30); ctx.lineWidth=9; ctx.lineCap="round";
-  ctx.beginPath(); ctx.moveTo(x-7, baseY-18); ctx.lineTo(x-9+run, baseY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x+7, baseY-18); ctx.lineTo(x+9-run, baseY); ctx.stroke();
+  // legs (walk cycle + a real kicking-leg swing)
+  const kp = c.kickT>0 ? Math.sin((1 - c.kickT/12)*Math.PI) : 0;   // 0 -> 1 -> 0 swing
+  const run = (c.onGround && Math.abs(c.vx)>0.5 && kp===0) ? Math.sin(t*0.4)*8 : 0;
+  ctx.strokeStyle=shade(c.sk.kit,-30); ctx.lineCap="round";
+  const hipY = baseY-18, f=c.facing;
+  // back / support leg
+  ctx.lineWidth=9;
+  ctx.beginPath(); ctx.moveTo(x - f*4, hipY); ctx.lineTo(x - f*8 - run, baseY); ctx.stroke();
+  // front / kicking leg — swings forward and up during a kick (bent knee)
+  ctx.lineWidth = kp>0 ? 10 : 9;
+  ctx.beginPath(); ctx.moveTo(x + f*4, hipY);
+  if(kp>0){
+    const knX = x + f*(10 + 16*kp), knY = baseY - 12 - 6*kp;   // knee
+    const ftX = x + f*(8  + 34*kp), ftY = baseY - 26*kp;       // foot
+    ctx.lineTo(knX, knY); ctx.lineTo(ftX, ftY); ctx.stroke();
+    // boot on the striking foot
+    ctx.fillStyle="#2a2a2a"; ctx.beginPath(); ctx.arc(ftX, ftY, 5, 0, TAU); ctx.fill();
+  } else {
+    ctx.lineTo(x + f*8 + run, baseY); ctx.stroke();
+  }
 
   // body (kit)
   roundRect(x-c.w/2, baseY-c.h, c.w, c.h-12, 10);
