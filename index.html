@@ -115,6 +115,14 @@
     border:2px solid rgba(255,255,255,.15);white-space:nowrap;
   }
   .scoreboard .clock{color:var(--accent);min-width:54px;text-align:center;}
+  /* super-shot meters */
+  #super-bars{position:absolute;top:52px;left:50%;transform:translateX(-50%);display:flex;gap:14px;pointer-events:none;}
+  .sbar{position:relative;width:120px;height:13px;background:rgba(0,0,0,.55);border:2px solid rgba(255,255,255,.3);border-radius:7px;overflow:hidden;}
+  .sbar i{position:absolute;inset:0;width:0%;background:linear-gradient(90deg,#ffcc33,#ff5a5f);transition:width .12s;}
+  .sbar b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;letter-spacing:1px;color:#fff;opacity:.85;}
+  .sbar.full{border-color:#fff;box-shadow:0 0 10px #ffcc33;animation:superpulse .6s infinite;}
+  .sbar.full b{content:"READY";}
+  @keyframes superpulse{0%,100%{box-shadow:0 0 6px #ffcc33}50%{box-shadow:0 0 16px #ff5a5f}}
   /* Mobile controls */
   #touch{position:absolute;inset:0;pointer-events:none;display:none;}
   #touch.active{display:block;}
@@ -138,6 +146,12 @@
     bottom:calc(var(--sbm) + 12px);
     background:rgba(255,90,95,.42);border-color:rgba(255,255,255,.6);
     font-size:clamp(30px,8vmin,42px);
+  }
+  #t-taunt{
+    right:calc(var(--sr) + var(--tpad) + var(--tk) + 14px);
+    bottom:calc(var(--sbm) + var(--tb) + 30px);
+    width:calc(var(--tb)*0.8);height:calc(var(--tb)*0.8);
+    background:rgba(255,255,255,.12);font-size:clamp(20px,5vmin,28px);
   }
   /* rotate-to-landscape prompt (touch + portrait) */
   #rotate{
@@ -264,6 +278,7 @@
       </div>
       <button class="btn secondary" data-go="tournament">🏆 TOURNAMENT</button>
       <button class="btn red" data-go="chaos">🌪️ WORLD CUP CHAOS</button>
+      <button class="btn" data-go="run" style="background:linear-gradient(#caa0ff,#9b59ff);color:#1a0a2a;box-shadow:0 6px 0 #6a3aa8,0 10px 16px rgba(0,0,0,.35)">🃏 CHAMPIONS RUN</button>
       <div class="row">
         <button class="btn small" data-go="skins">🎭 SKINS</button>
         <button class="btn small" data-go="missions">🎯 MISSIONS</button>
@@ -338,6 +353,19 @@
         <h2>🎯 Missions</h2>
         <div id="missions-progress" class="hint" style="margin-bottom:10px"></div>
         <div class="grid" id="missions-grid"></div>
+      </div>
+    </div>
+
+    <!-- ============ CHAMPIONS RUN ============ -->
+    <div class="screen" id="scr-run">
+      <button class="btn small secondary back" data-go="menu">‹ Back</button>
+      <div class="coinbar">🪙 <span id="coin-run">0</span></div>
+      <div class="panel">
+        <h2>🃏 Champions Run</h2>
+        <p class="hint" style="margin-top:0">Win to draft a perk. Perks stack. One loss ends the run!</p>
+        <div id="run-body"></div>
+        <div class="grid" id="run-draft" style="margin-top:10px"></div>
+        <button class="btn green" id="run-start" style="margin-top:12px">START RUN ⚽</button>
       </div>
     </div>
 
@@ -434,6 +462,10 @@
       <span id="hud-s2">0</span>
       <span id="hud-p2">AI</span>
     </div>
+    <div id="super-bars">
+      <div class="sbar" id="sbar-1"><i></i><b>SUPER</b></div>
+      <div class="sbar" id="sbar-2"><i></i><b>SUPER</b></div>
+    </div>
     <button class="btn small red" id="hud-pause" style="position:absolute;top:10px;right:10px;pointer-events:auto;min-width:auto">II</button>
     <div class="toast" id="toast"></div>
   </div>
@@ -444,6 +476,7 @@
     <div class="tbtn" id="t-right">▶</div>
     <div class="tbtn" id="t-jump">▲</div>
     <div class="tbtn" id="t-kick">⚽</div>
+    <div class="tbtn" id="t-taunt">😜</div>
   </div>
 
   <!-- ============ PAUSE OVERLAY ============ -->
@@ -765,7 +798,9 @@ const Audio2 = (()=>{
     powerup(){ [392,523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,0.12,"triangle",0.25),i*60)); },
     click(){ tone(440,0.05,"square",0.2,660); },
     coin(){ tone(880,0.07,"square",0.2); setTimeout(()=>tone(1320,0.1,"square",0.2),60); },
-    crowd(vol=0.06){ noise(0.8, vol, 700); }
+    crowd(vol=0.06){ noise(0.8, vol, 700); },
+    chant(){ noise(0.7,0.12,700); [392,392,330].forEach((f,i)=>setTimeout(()=>tone(f,0.25,"sawtooth",0.16),i*220)); },  // "olé"
+    taunt(){ tone(300,0.12,"square",0.2,500); setTimeout(()=>tone(240,0.14,"square",0.2,180),110); }
   };
   // simple procedural music loop
   const scale=[262,294,330,392,440,523,587,659];
@@ -793,14 +828,14 @@ const Audio2 = (()=>{
    ============================================================ */
 // Each skin defines head color, hair/hat, accessory drawn in code.
 const SKINS = {
-  classic:   {name:"Classic Plidor", price:0,   skin:"#f6c89a", hair:"#5a3a1a", kit:"#2aa9ff", style:"hair"},
-  spanish:   {name:"Spanish Plidor", price:300, skin:"#e8b48a", hair:"#2a1a0a", kit:"#c8102e", style:"hair", flag:"es"},
-  pirate:    {name:"Pirate Plidor",  price:600, skin:"#e0a878", hair:"#222",    kit:"#3a2a1a", style:"pirate"},
-  ninja:     {name:"Ninja Plidor",   price:800, skin:"#d9a06b", hair:"#111",    kit:"#222",    style:"ninja"},
-  king:      {name:"King Plidor",    price:1200,skin:"#f6c89a", hair:"#caa12a", kit:"#7b1fa2", style:"crown"},
-  astronaut: {name:"Astronaut Plidor",price:1500,skin:"#f0d8b8",hair:"#eee",    kit:"#dddddd", style:"astro"},
-  banana:    {name:"Banana Plidor",  price:2000,skin:"#ffe14d", hair:"#caa400", kit:"#ffe14d", style:"banana"},
-  golden:    {name:"Golden Plidor",  price:5000,skin:"#ffd86b", hair:"#b8860b", kit:"#ffcf40", style:"crown", gold:true}
+  classic:   {name:"Classic Plidor", price:0,   skin:"#f6c89a", hair:"#5a3a1a", kit:"#2aa9ff", style:"hair",  super:{name:"POWER BLAST",   type:"power",  color:"#2aa9ff", icon:"💥"}},
+  spanish:   {name:"Spanish Plidor", price:300, skin:"#e8b48a", hair:"#2a1a0a", kit:"#c8102e", style:"hair", flag:"es", super:{name:"TIKI-TAKA ROCKET", type:"power", color:"#c8102e", icon:"🚀"}},
+  pirate:    {name:"Pirate Plidor",  price:600, skin:"#e0a878", hair:"#222",    kit:"#3a2a1a", style:"pirate", super:{name:"CANNON SHOT",   type:"phase",  color:"#8a5a2a", icon:"💣"}},
+  ninja:     {name:"Ninja Plidor",   price:800, skin:"#d9a06b", hair:"#111",    kit:"#222",    style:"ninja",  super:{name:"SHADOW STRIKE", type:"shadow", color:"#9b59ff", icon:"🥷"}},
+  king:      {name:"King Plidor",    price:1200,skin:"#f6c89a", hair:"#caa12a", kit:"#7b1fa2", style:"crown",  super:{name:"ROYAL STRIKE",  type:"phase",  color:"#ffd233", icon:"👑"}},
+  astronaut: {name:"Astronaut Plidor",price:1500,skin:"#f0d8b8",hair:"#eee",    kit:"#dddddd", style:"astro",  super:{name:"ZERO-G LOB",    type:"float",  color:"#7fd3ff", icon:"🌌"}},
+  banana:    {name:"Banana Plidor",  price:2000,skin:"#ffe14d", hair:"#caa400", kit:"#ffe14d", style:"banana", super:{name:"BANANA CURVE",  type:"curve",  color:"#ffe14d", icon:"🍌"}},
+  golden:    {name:"Golden Plidor",  price:5000,skin:"#ffd86b", hair:"#b8860b", kit:"#ffcf40", style:"crown", gold:true, super:{name:"GOLDEN BOMB", type:"bomb", color:"#ffd700", icon:"🟡"}}
 };
 const BALLS = {
   classic: {name:"Classic", price:0,   base:"#ffffff", spots:"#111"},
@@ -891,6 +926,25 @@ function drawParticles(){
     } else {
       ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,TAU); ctx.fill();
     }
+  }
+  ctx.globalAlpha=1;
+}
+
+/* floating text popups (style points, super names, announcer lines) */
+const floaters=[];
+function floatText(x,y,text,color,size){
+  floaters.push({x:clamp(x,60,W-60), y, text, color:color||"#fff", size:size||18, life:1, decay:0.016, vy:-0.7});
+}
+function updateFloaters(){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.y+=f.vy; f.life-=f.decay; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  for(const f of floaters){
+    ctx.globalAlpha=Math.max(f.life,0);
+    ctx.font="bold "+f.size+"px Trebuchet MS";
+    ctx.lineWidth=4; ctx.strokeStyle="rgba(0,0,0,0.6)"; ctx.strokeText(f.text,f.x,f.y);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
   }
   ctx.globalAlpha=1;
 }
@@ -1007,7 +1061,11 @@ function makeCharacter(side, isAI, skinId){
     onGround:true, facing: side==="L"?1:-1,
     kickT:0, kickArm:0,      // kick animation timer
     headScale:1, speedMul:1, jumpMul:1, frozen:0,
-    blink: rand(60,180), emote:"normal", emoteT:0
+    blink: rand(60,180), emote:"normal", emoteT:0,
+    // super shot meter + spectacular moves + emotes
+    superMeter:0, bicycleT:0, style:0, celebT:0, tauntT:0,
+    // run perks (Champions Run) — neutral by default
+    perkKick:1, perkJump:1, perkSpeed:1, perkHead:0, perkMagnet:0, fireKick:0, twinStrike:0, superCharge:1, kickCount:0
   };
 }
 
@@ -1023,6 +1081,7 @@ function startMatch(opts){
     stadium, diff, diffKey,
     tournament: !!opts.tournament,
     twoPlayer: !!opts.twoPlayer,
+    isRun: !!opts.run,
     daily: !!opts.daily, dailyTarget: opts.dailyTarget||0,
     oppName: opts.oppName || "AI Rival",
     p1: makeCharacter("L", false, SAVE.skin),
@@ -1049,6 +1108,7 @@ function startMatch(opts){
   G.arena = buildArena(stadium.id);   // interactive props for this stadium
   resetMods();
   resetBall(G.kickoffSide);
+  if(opts.run) applyRunPerks(G.p1);   // Champions Run: stack drafted perks onto the player
   G.showTutorial = !SAVE.tutorialSeen && !opts.twoPlayer;  // first-time controls hint
   tryFullscreen();        // mobile: maximize screen real estate (best-effort)
   gameState = State.MATCH;
@@ -1190,6 +1250,7 @@ function matchStep(input){
   for(const b of allBalls()){ if(checkGoal(b)) break; }
   maybeSpawnPowerup();
   updatePowerupsOnField();
+  addSuper(G.p1, 0.08); addSuper(G.p2, 0.08);   // passive super-meter charge
   if(G.slowmo>0) G.slowmo--;
 }
 
@@ -1198,7 +1259,7 @@ function controlChar(c, inp){
   const acc = MOVE * c.speedMul;
   if(inp.left){ c.vx -= acc; c.facing=-1; }
   if(inp.right){ c.vx += acc; c.facing=1; }
-  if(inp.jump && c.onGround){ c.vy = JUMP_V*c.jumpMul*G.mods.jump; c.onGround=false; Audio2.SFX.jump(); spawnParticles(c.x, GROUND, 8,{color:"#cccccc",up:1,grav:0.2,decMin:0.05,decMax:0.08,sizeMin:2,sizeMax:5}); }
+  if(inp.jump && c.onGround){ c.vy = JUMP_V*c.jumpMul*G.mods.jump*(c.perkJump||1); c.onGround=false; Audio2.SFX.jump(); spawnParticles(c.x, GROUND, 8,{color:"#cccccc",up:1,grav:0.2,decMin:0.05,decMax:0.08,sizeMin:2,sizeMax:5}); }
   if(inp.kick) tryKick(c);
 }
 
@@ -1209,29 +1270,74 @@ function tryKick(c){
   const dx=b.x-c.x, dy=b.y-(c.y-c.h-c.r*c.headScale*0.4);
   const dist=Math.hypot(dx,dy);
   const reach = c.r*c.headScale + b.r + 58;
-  if(dist < reach){
-    const ang=Math.atan2(dy,dx);
-    let power = (13 + (G.activeFx[c===G.p1?"p1":"p2"].fire?9:0)) * G.mods.kickPow;
-    // forward drive + a GUARANTEED upward lift on every kick so the ball arcs
-    // (reaches the goal and the airborne power-ups instead of rolling flat)
-    b.vx = Math.cos(ang)*power*0.95 + c.vx*0.55 + c.facing*2;
-    b.vy = -Math.abs(Math.sin(ang)*power*0.7) - power*0.62;   // always lifts up
-    b.vr = c.facing*0.4;
-    if(G.activeFx[c===G.p1?"p1":"p2"].fire){ b.onFire=120; }
-    Audio2.SFX.kick();
-    shake(6);
-    spawnParticles(b.x,b.y,12,{color:b.onFire?"#ff7a1f":"#ffffff",spMin:2,spMax:6,decMin:0.04,decMax:0.08});
-    c.emote="kick"; c.emoteT=20;
-    // explosive ball chaos: detonate on kick, blast the rival away
-    if(G.mods.explosive){
-      b.vx*=1.4; b.vy-=3; b.onFire=90;
-      shake(18); Audio2.SFX.goal();
-      spawnParticles(b.x,b.y,30,{color:pick(["#ff5a1f","#ffb347","#ffe14d"]),spMin:3,spMax:10,decMin:0.02,decMax:0.05,sizeMin:3,sizeMax:8});
-      const foe=c===G.p1?G.p2:G.p1;
-      const fdx=foe.x-b.x, fd=Math.abs(fdx)||1;
-      if(fd<160){ foe.vx += (fdx/fd)*12; foe.vy=-7; foe.onGround=false; }
-    }
+  if(dist >= reach) return;                      // whiff (still plays the animation)
+
+  // ---- SUPER SHOT: a full meter turns this kick into the skin's signature special ----
+  if(c.superMeter>=100){ fireSuper(c,b); c.superMeter=0; return; }
+
+  const ang=Math.atan2(dy,dx);
+  const me = c===G.p1?"p1":"p2";
+  let power = (13 + (G.activeFx[me].fire?9:0)) * G.mods.kickPow * (c.perkKick||1);
+
+  // ---- spectacular moves: kicking while airborne is a volley / bicycle ----
+  let bicycle=false, volley=false;
+  if(!c.onGround){
+    if(b.y < c.y - c.h*0.6){ bicycle=true; power*=1.35; c.bicycleT=20; }   // overhead
+    else { volley=true; power*=1.12; }
   }
+
+  b.vx = Math.cos(ang)*power*0.95 + c.vx*0.55 + c.facing*2;
+  b.vy = -Math.abs(Math.sin(ang)*power*0.7) - power*0.62;
+  if(bicycle){ b.vy -= 4; b.vx = c.facing*Math.abs(b.vx)*0.9 + c.facing*4; }
+  b.vr = c.facing*0.4;
+
+  if(G.activeFx[me].fire || (c.fireKick && Math.random()<c.fireKick)) b.onFire=120;  // fiery kick (chaos or perk)
+  if(c.twinStrike){ c.kickCount=(c.kickCount||0)+1; if(c.kickCount % c.twinStrike===0) spawnExtraBalls(1); }  // perk
+
+  Audio2.SFX.kick(); shake(bicycle?9:6);
+  spawnParticles(b.x,b.y,12,{color:b.onFire?"#ff7a1f":"#ffffff",spMin:2,spMax:6,decMin:0.04,decMax:0.08});
+  c.emote="kick"; c.emoteT=20;
+  addSuper(c, 6);
+  if(bicycle){ awardStyle(c,50,"🚲 BICYCLE!"); floatText(c.x,c.y-c.h-50,"🚲 BICYCLE! +50","#ffcc33",22); shake(10); }
+  else if(volley){ awardStyle(c,20,"VOLLEY"); }
+
+  // explosive ball chaos: detonate on kick, blast the rival away
+  if(G.mods.explosive){
+    b.vx*=1.4; b.vy-=3; b.onFire=90;
+    shake(18); Audio2.SFX.goal();
+    spawnParticles(b.x,b.y,30,{color:pick(["#ff5a1f","#ffb347","#ffe14d"]),spMin:3,spMax:10,decMin:0.02,decMax:0.05,sizeMin:3,sizeMax:8});
+    const foe=c===G.p1?G.p2:G.p1;
+    const fdx=foe.x-b.x, fd=Math.abs(fdx)||1;
+    if(fd<160){ foe.vx += (fdx/fd)*12; foe.vy=-7; foe.onGround=false; }
+  }
+}
+
+/* ---- Super Shot: launch the skin's signature special toward the rival goal ---- */
+function fireSuper(c,b){
+  const me=c===G.p1?"p1":"p2";
+  const sup=c.sk.super||{name:"SUPER SHOT",type:"power",color:"#ffcc33",icon:"⚡"};
+  const goalX=(c===G.p1)?W:0, gdir=(goalX>b.x)?1:-1;
+  b.vx=gdir*30; b.vy=-10; b.vr=gdir*0.6; b.onFire=170;
+  b.superType=sup.type; b.superT=90; b.superOwner=me; b.superColor=sup.color;
+  if(sup.type==="float"){ b.vy=-15; b.vx=gdir*18; }
+  if(sup.type==="curve"){ b.vy=-13; b.vr=gdir*0.9; }
+  if(sup.type==="bomb"){ b.vx=gdir*26; }
+  G.slowmo=42; shake(22); buzz([60,40,90]); flash(0.5,sup.color);
+  Audio2.SFX.goal(); Audio2.SFX.powerup();
+  G.superBanner={ name:sup.name, icon:sup.icon, color:sup.color, t:80 };
+  spawnParticles(b.x,b.y,44,{color:sup.color,spMin:3,spMax:11,decMin:0.02,decMax:0.05,sizeMin:3,sizeMax:9});
+  c.emote="kick"; c.emoteT=30;
+  floatText(c.x,c.y-c.h-60,sup.icon+" "+sup.name,sup.color,24);
+  // phase/bomb supers shove the rival aside
+  if(sup.type==="phase"||sup.type==="bomb"){
+    const foe=c===G.p1?G.p2:G.p1;
+    foe.vx += gdir*11; foe.vy=-6; foe.onGround=false;
+  }
+}
+function addSuper(c, amt){ if(c) c.superMeter=Math.min(100, c.superMeter + amt*(c.superCharge||1)); }
+function awardStyle(c, pts, label){
+  c.style=(c.style||0)+pts;
+  addSuper(c, pts*0.12);   // stylish play charges the meter faster
 }
 
 function stepChar(c){
@@ -1245,8 +1351,13 @@ function stepChar(c){
   c.x=clamp(c.x,minX,maxX);
   if(c.kickT>0) c.kickT--;
   if(c.kickCooldown>0) c.kickCooldown--;
+  if(c.bicycleT>0) c.bicycleT--;
+  if(c.celebT>0) c.celebT--;
+  if(c.tauntT>0) c.tauntT--;
   if(c.emoteT>0){ c.emoteT--; if(c.emoteT===0) c.emote="normal"; }
   c.blink--; if(c.blink<0) c.blink=rint(60,200);
+  // perk: ball magnet pulls the ball toward this player
+  if(c.perkMagnet){ const b=G.ball, ddx=c.x-b.x, ddy=(c.y-c.h)-b.y, dd=Math.hypot(ddx,ddy)||1; if(dd<260){ b.vx+=ddx/dd*c.perkMagnet; b.vy+=ddy/dd*c.perkMagnet; } }
 }
 
 function stepBall(b){
@@ -1263,6 +1374,16 @@ function stepBall(b){
   b.vy+=BALL_GRAV*M.ballGrav;
   b.vx += M.windOsc ? M.wind*Math.sin(G.time*0.035) : M.wind;   // chaos wind (tornado oscillates)
   b.vx*=BALL_AIRDRAG; b.vy*=BALL_AIRDRAG;
+  // ---- super shot special behaviour ----
+  if(b.superT>0){
+    b.superT--;
+    const gx=(b.superOwner==="p1")?W:0;
+    if(b.superType==="shadow"){ b.vx += Math.sign(gx-b.x)*0.6; b.vy += Math.sign((GROUND-80)-b.y)*0.3; }   // homing
+    else if(b.superType==="curve"){ b.vy -= 0.5; b.vr += (b.superOwner==="p1"?0.03:-0.03); }                // banana
+    else if(b.superType==="float"){ b.vy -= BALL_GRAV*M.ballGrav*0.85; }                                     // anti-grav
+    spawnParticles(b.x,b.y,2,{color:b.superColor||"#ffcc33",grav:0,decMin:0.05,decMax:0.1,sizeMin:b.r*0.4,sizeMax:b.r*0.8});
+    if(b.superT<=0) b.superType=null;
+  }
   // ---- sub-stepped integration: move in small slices so a fast ball can't
   //      tunnel through players or walls (fixes "ball passes through rival") ----
   const speed=Math.hypot(b.vx,b.vy);
@@ -1332,6 +1453,8 @@ function handleCollisions(){
 }
 function charBall(c,b){
   b = b || G.ball;
+  // a super shot phases straight through the rival (unstoppable)
+  if(b.superT>0 && (b.superType==="phase"||b.superType==="bomb") && c!==G[b.superOwner]) return;
   const headY = c.y - c.h - c.r*c.headScale*0.3;
   const headR = c.r*c.headScale;
   // head collision
@@ -1344,6 +1467,7 @@ function charBall(c,b){
     b.vy = (b.vy-2*dot*ny)*0.7 + c.vy*0.5 + ny*4 - 1.5;
     b.vr += c.vx*0.03;
     Audio2.SFX.bounce();
+    addSuper(c, 3);   // heading charges your super meter
     if(Math.hypot(b.vx,b.vy)>8){ shake(3); }
     spawnParticles(b.x,b.y,4,{color:"#ffffff",decMin:0.06,decMax:0.1,sizeMin:2,sizeMax:4});
     return;
@@ -1397,9 +1521,16 @@ function onGoal(scorer){
   spawnParticles(gx, G.mods.goalTop+G.mods.goalH/2, 50,{spMin:3,spMax:11,decMin:0.01,decMax:0.03,grav:0.08,sizeMin:3,sizeMax:8,color:"#ffcc33"});
   fireworks();
   confetti();
-  showToast(scorer==="p1"?"GOAL! ⚽":"AI SCORES!");
+  // announcer + crowd chant + celebration + comeback super charge
+  const sc=G[scorer], foe=G[scorer==="p1"?"p2":"p1"];
+  sc.celebT=110; sc.emote="happy"; sc.emoteT=110;
+  addSuper(foe, 22);                                  // conceding charges your meter (comeback)
+  floatText(gx, G.mods.goalTop+30, pick(ANNOUNCER), scorer==="p1"?"#46ff8c":"#ff5a5f", 30);
+  Audio2.SFX.chant();
+  showToast(scorer==="p1"?(G.twoPlayer?"P1 SCORES! ⚽":"GOAL! ⚽"):(G.twoPlayer?"P2 SCORES! ⚽":"AI SCORES!"));
   updateHUD();
 }
+const ANNOUNCER=["GOOOAL! 🔥","WHAT A STRIKE!","UNBELIEVABLE! 🤯","GOLAZO! ⚡","TAKE A BOW! 🎩","SCREAMER! 💥","TOP BINS! 🎯","HE SCORES! 🙌"];
 function fireworks(){
   for(let k=0;k<5;k++){
     setTimeout(()=>{
@@ -1456,6 +1587,8 @@ function endMatch(){
   const diffBonus={easy:1,normal:1.25,hard:1.6,insane:2.2}[G.diffKey];
   coins=Math.round(coins*diffBonus);
   if(G.chaos) coins=Math.round(coins*1.4);   // chaos pays better
+  const styleBonus=Math.round((G.p1.style||0)*0.5);   // spectacular play pays
+  coins += styleBonus;
 
   // ===== stats =====
   const st=SAVE.stats;
@@ -1494,6 +1627,7 @@ function endMatch(){
   }
   showAchList(earned);
   recordLeader(G.s1);
+  if(G.isRun){ handleRunResult(win, draw); return; }
   // ===== over screen (reset button in case a tournament repurposed it) =====
   const wasChaos = G.chaos, wasDaily=G.daily, myGoals=G.s1, oppGoals=G.s2;
   $("over-again").textContent = wasDaily ? "▶ PLAY AGAIN" : wasChaos ? "🌪️ AGAIN" : "▶ PLAY AGAIN";
@@ -1556,6 +1690,8 @@ function updateActiveFx(){
     }
     if(G.mods.giantHeads) c.headScale=Math.max(c.headScale,2);  // chaos: Giant Heads
     if(G.mods.allSpeed!==1) c.speedMul*=G.mods.allSpeed;        // chaos: Speed Demons
+    c.speedMul *= (c.perkSpeed||1);   // run perk: speed
+    c.headScale += (c.perkHead||0);   // run perk: bigger head/reach
     // freeze applies to opponent: handled where set
   }
 }
@@ -1754,30 +1890,48 @@ function drawCharacter(c, t){
   const x=c.x, baseY=c.y;
   const headR=c.r*c.headScale;
   const headY=baseY - c.h - headR*0.3;
+  const f=c.facing;
+  // SUPER READY: pulsing aura when the meter is full
+  if(c.superMeter>=100){
+    const sc=c.sk.super?c.sk.super.color:"#ffcc33", gp=0.5+0.5*Math.sin(t*0.3);
+    ctx.save(); ctx.globalAlpha=0.35+0.35*gp;
+    const gg=ctx.createRadialGradient(x,baseY-c.h*0.6,4,x,baseY-c.h*0.6,c.w*1.7);
+    gg.addColorStop(0,sc); gg.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(x,baseY-c.h*0.6,c.w*1.7,0,TAU); ctx.fill();
+    ctx.restore();
+  }
   // shadow
   ctx.fillStyle="rgba(0,0,0,0.22)";
   const sh = 1 - (GROUND-baseY)/200;
   ctx.beginPath(); ctx.ellipse(x,GROUND+6, c.w*0.7*sh, 8*sh,0,0,TAU); ctx.fill();
 
-  // legs (walk cycle + a real kicking-leg swing)
+  // legs (walk cycle + kicking-leg swing + overhead bicycle pose)
   const kp = c.kickT>0 ? Math.sin((1 - c.kickT/12)*Math.PI) : 0;   // 0 -> 1 -> 0 swing
   const run = (c.onGround && Math.abs(c.vx)>0.5 && kp===0) ? Math.sin(t*0.4)*8 : 0;
   ctx.strokeStyle=shade(c.sk.kit,-30); ctx.lineCap="round";
-  const hipY = baseY-18, f=c.facing;
-  // back / support leg
-  ctx.lineWidth=9;
-  ctx.beginPath(); ctx.moveTo(x - f*4, hipY); ctx.lineTo(x - f*8 - run, baseY); ctx.stroke();
-  // front / kicking leg — swings forward and up during a kick (bent knee)
-  ctx.lineWidth = kp>0 ? 10 : 9;
-  ctx.beginPath(); ctx.moveTo(x + f*4, hipY);
-  if(kp>0){
-    const knX = x + f*(10 + 16*kp), knY = baseY - 12 - 6*kp;   // knee
-    const ftX = x + f*(8  + 34*kp), ftY = baseY - 26*kp;       // foot
-    ctx.lineTo(knX, knY); ctx.lineTo(ftX, ftY); ctx.stroke();
-    // boot on the striking foot
-    ctx.fillStyle="#2a2a2a"; ctx.beginPath(); ctx.arc(ftX, ftY, 5, 0, TAU); ctx.fill();
+  const hipY = baseY-18;
+  if(c.bicycleT>0){
+    // bicycle kick: both legs scissor up and over the head
+    const bp = c.bicycleT/20;
+    ctx.lineWidth=10;
+    ctx.beginPath(); ctx.moveTo(x, hipY); ctx.lineTo(x + f*(20+20*bp), baseY-c.h-10-30*bp); ctx.stroke();  // striking leg overhead
+    ctx.beginPath(); ctx.moveTo(x, hipY); ctx.lineTo(x - f*(8+10*bp), baseY-c.h-2*bp); ctx.stroke();        // trailing leg
+    ctx.fillStyle="#2a2a2a"; ctx.beginPath(); ctx.arc(x + f*(20+20*bp), baseY-c.h-10-30*bp, 5, 0, TAU); ctx.fill();
   } else {
-    ctx.lineTo(x + f*8 + run, baseY); ctx.stroke();
+    // back / support leg
+    ctx.lineWidth=9;
+    ctx.beginPath(); ctx.moveTo(x - f*4, hipY); ctx.lineTo(x - f*8 - run, baseY); ctx.stroke();
+    // front / kicking leg — swings forward and up during a kick (bent knee)
+    ctx.lineWidth = kp>0 ? 10 : 9;
+    ctx.beginPath(); ctx.moveTo(x + f*4, hipY);
+    if(kp>0){
+      const knX = x + f*(10 + 16*kp), knY = baseY - 12 - 6*kp;   // knee
+      const ftX = x + f*(8  + 34*kp), ftY = baseY - 26*kp;       // foot
+      ctx.lineTo(knX, knY); ctx.lineTo(ftX, ftY); ctx.stroke();
+      ctx.fillStyle="#2a2a2a"; ctx.beginPath(); ctx.arc(ftX, ftY, 5, 0, TAU); ctx.fill();
+    } else {
+      ctx.lineTo(x + f*8 + run, baseY); ctx.stroke();
+    }
   }
 
   // body (kit)
@@ -1836,6 +1990,15 @@ function drawCharacter(c, t){
     if(G.activeFx[fxKey].speed){ ctx.strokeStyle="#ffe14d"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,headR+5,0,TAU); ctx.stroke(); }
   }
   ctx.restore();
+
+  // taunt speech bubble
+  if(c.tauntT>0 && c.taunt){
+    const by=headY-headR-22;
+    ctx.fillStyle="#fff"; roundRect(x-22,by-16,44,30,10); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x-6,by+12); ctx.lineTo(x+6,by+12); ctx.lineTo(x, by+20); ctx.closePath(); ctx.fill();
+    ctx.font="20px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillStyle="#000";
+    ctx.fillText(c.taunt, x, by-1);
+  }
 }
 function drawFace(c, R, t){
   const eyeY=-R*0.05, eyeX=R*0.34;
@@ -1979,6 +2142,19 @@ function drawPowerupsField(){
 }
 
 /* score popups & countdown overlay */
+function drawSuperBanner(){
+  if(!G.superBanner) return;
+  const sb=G.superBanner; sb.t--;
+  if(sb.t<=0){ G.superBanner=null; return; }
+  ctx.save();
+  ctx.globalAlpha=clamp(sb.t/30,0,1);
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.font="bold 52px Trebuchet MS";
+  ctx.lineWidth=8; ctx.strokeStyle="rgba(0,0,0,0.65)";
+  const s=sb.icon+" "+sb.name;
+  ctx.strokeText(s, W/2, H*0.30); ctx.fillStyle=sb.color; ctx.fillText(s, W/2, H*0.30);
+  ctx.restore();
+}
 function drawMatchOverlay(t){
   // countdown
   if(!G.started && G.startCountdown>0){
@@ -2119,10 +2295,12 @@ function loop(ts){
     drawCharacter(G.p1, t);
     for(const b of allBalls()) drawBall(b);
     drawParticles();
+    drawFloaters();
     drawMatchOverlay(t);
+    drawSuperBanner();
     if(G.chaos) drawChaosHUD(t);
     updateParticles();
-    if(gameState===State.MATCH) updateHUD();
+    if(gameState===State.MATCH){ updateFloaters(); updateHUD(); }
   }
   // overlays (menu particles)
   if(gameState===State.MENU||gameState===State.OVER){ updateParticles(); drawParticles(); }
@@ -2159,7 +2337,12 @@ function updateHUD(){
   $("hud-clock").textContent=`${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")}`;
   $("hud-p1").textContent= G.twoPlayer ? "P1" : "YOU";
   $("hud-p2").textContent= G.twoPlayer ? "P2" : (G.tournament ? "RIVAL" : "AI");
+  // super meters
+  const b1=$("sbar-1"), b2=$("sbar-2");
+  if(b1){ b1.firstElementChild.style.width=G.p1.superMeter+"%"; b1.classList.toggle("full",G.p1.superMeter>=100); }
+  if(b2){ b2.firstElementChild.style.width=G.p2.superMeter+"%"; b2.classList.toggle("full",G.p2.superMeter>=100); }
 }
+function doTaunt(c){ if(!c || c.tauntT>0 || gameState!==State.MATCH) return; c.taunt=pick(["😜","💪","😎","🤙","😴","👋","🕺","😝"]); c.tauntT=70; c.emote="happy"; c.emoteT=70; Audio2.SFX.taunt(); }
 let toastTimer=null;
 function showToast(msg){
   const el=$("toast"); el.textContent=msg; el.classList.add("show");
@@ -2174,7 +2357,7 @@ function showScreen(id){
   if(id) $(id).classList.add("active");
 }
 function refreshCoins(){
-  ["coin-menu","coin-skins","coin-daily","coin-missions"].forEach(id=>{ const e=$(id); if(e) e.textContent=SAVE.coins; });
+  ["coin-menu","coin-skins","coin-daily","coin-missions","coin-run"].forEach(id=>{ const e=$(id); if(e) e.textContent=SAVE.coins; });
   const dot=$("daily-dot"); if(dot) dot.classList.toggle("hide", !dailyAvailable());
 }
 
@@ -2194,6 +2377,7 @@ function nav(dest){
   else if(dest==="daily"){ showScreen("scr-daily"); buildDaily(); }
   else if(dest==="missions"){ showScreen("scr-missions"); buildMissions(); }
   else if(dest==="leader"){ showScreen("scr-leader"); buildLeader(); }
+  else if(dest==="run"){ showScreen("scr-run"); buildRun(); }
   else if(dest==="tournament"){ showScreen("scr-tournament"); buildDiffPills("diff-pills-t"); ensureTournament(); renderBracket(); }
   else if(dest==="skins"){ showScreen("scr-skins"); buildSkins(); }
   else if(dest==="stats"){ showScreen("scr-stats"); buildStats(); }
@@ -2508,6 +2692,79 @@ $("t-next").onclick=()=>{
     renderBracket();
   }
 };
+/* ============================================================
+   CHAMPIONS RUN — roguelite: draft stacking perks across 8 escalating matches
+   ============================================================ */
+const PERKS = {
+  bouncy:  {name:"Bouncy Boots", icon:"🦘", desc:"+30% jump",               apply:c=>c.perkJump*=1.3},
+  cannon:  {name:"Cannon Legs",  icon:"💥", desc:"+30% kick power",         apply:c=>c.perkKick*=1.3},
+  speed:   {name:"Speedster",    icon:"⚡", desc:"+25% move speed",         apply:c=>c.perkSpeed*=1.25},
+  magnet:  {name:"Magnet Head",  icon:"🧲", desc:"Ball drifts toward you",  apply:c=>c.perkMagnet+=0.55},
+  bighead: {name:"Big Header",   icon:"🗿", desc:"Bigger head & reach",     apply:c=>c.perkHead+=0.4},
+  twin:    {name:"Twin Strike",  icon:"⚽", desc:"Every 5th kick = 2 balls",apply:c=>c.twinStrike=5},
+  fire:    {name:"Fire Boots",   icon:"🔥", desc:"Kicks sometimes ignite",  apply:c=>c.fireKick+=0.35},
+  charger: {name:"Super Charger",icon:"🌟", desc:"Super charges 60% faster",apply:c=>c.superCharge*=1.6}
+};
+const PERK_IDS=Object.keys(PERKS);
+let RUN=null;
+function newRun(){ RUN={ round:1, max:8, perks:[], alive:true, draftPending:false, draftCards:[] }; }
+function ensureRun(){ if(!RUN || !RUN.alive) newRun(); }
+function runDiff(r){ return r<=2?"normal":r<=5?"hard":"insane"; }
+function applyRunPerks(c){ if(RUN) for(const id of RUN.perks){ const p=PERKS[id]; if(p) p.apply(c); } }
+function startRunMatch(){ adThenStart({ run:true, diff:runDiff(RUN.round), oppSkin:pick(Object.keys(SKINS)), oppName:"Round "+RUN.round }); }
+function openDraft(){ RUN.draftPending=true; RUN.draftCards=[...PERK_IDS].sort(()=>Math.random()-0.5).slice(0,3); nav("run"); }
+function buildRun(){
+  ensureRun();
+  const cr=$("coin-run"); if(cr) cr.textContent=SAVE.coins;
+  const icons=RUN.perks.length?RUN.perks.map(id=>PERKS[id].icon).join(" "):"—";
+  let body=`<div class="stat-line"><span>Round</span><b>${RUN.round} / ${RUN.max}</b></div>
+    <div class="stat-line"><span>Difficulty</span><b>${DIFFS[runDiff(RUN.round)].name}</b></div>
+    <div class="stat-line"><span>Perks</span><b>${icons}</b></div>`;
+  const draft=$("run-draft"), startBtn=$("run-start"); draft.innerHTML="";
+  if(RUN.draftPending){
+    body+=`<p style="margin-top:10px;color:var(--accent);font-weight:bold">Draft a perk to continue:</p>`;
+    startBtn.style.display="none";
+    for(const id of RUN.draftCards){
+      const p=PERKS[id], card=document.createElement("div"); card.className="card";
+      card.innerHTML=`<div style="font-size:34px">${p.icon}</div><div class="name">${p.name}</div><div class="price">${p.desc}</div>`;
+      card.onclick=()=>{ RUN.perks.push(id); RUN.draftPending=false; Audio2.SFX.coin(); startRunMatch(); };
+      draft.appendChild(card);
+    }
+  } else {
+    startBtn.style.display=""; startBtn.textContent=`START ROUND ${RUN.round} ⚽`;
+  }
+  $("run-body").innerHTML=body;
+}
+function handleRunResult(win,draw){
+  $("over-score").textContent=`${G.s1} - ${G.s2}`;
+  setupOverActions(0, `I'm on a Champions Run in Plidor Champions — round ${RUN.round}! 🃏⚽`);
+  $("over-coins").textContent="";
+  if(win && !draw){
+    SAVE.coins+=50;
+    if(RUN.round>=RUN.max){
+      RUN.alive=false; SAVE.coins+=600; save();
+      $("over-title").textContent="🏆 RUN CHAMPION!";
+      $("over-sub").textContent="You cleared all 8 rounds! +600 🪙";
+      $("over-again").textContent="🃏 NEW RUN";
+      $("over-again").onclick=()=>{ Audio2.SFX.click(); newRun(); nav("run"); };
+    } else {
+      save();
+      $("over-title").textContent=`ROUND ${RUN.round} CLEARED! ➡`;
+      $("over-sub").textContent="Draft a perk and push on.";
+      $("over-again").textContent="🃏 DRAFT PERK";
+      $("over-again").onclick=()=>{ Audio2.SFX.click(); RUN.round++; openDraft(); };
+    }
+  } else {
+    const bonus=RUN.round*30; SAVE.coins+=bonus; RUN.alive=false; save();
+    $("over-title").textContent="RUN OVER 💀";
+    $("over-sub").textContent=`Reached round ${RUN.round}. +${bonus} 🪙 survival bonus`;
+    $("over-again").textContent="🃏 NEW RUN";
+    $("over-again").onclick=()=>{ Audio2.SFX.click(); newRun(); nav("run"); };
+  }
+  showScreen("scr-over");
+}
+$("run-start").onclick=()=>{ Audio2.init(); Audio2.resume(); startRunMatch(); };
+
 function simulateUntilPlayer(){
   while(!TOURN.done){
     const m=TOURN.rounds[TOURN.round][TOURN.matchIndex];
@@ -2627,9 +2884,14 @@ window.addEventListener("keydown",e=>{
   const k=e.key.toLowerCase();
   if([" ","arrowup","arrowdown","arrowleft","arrowright","a","d","w"].includes(k)) e.preventDefault();
   if(k==="enter" && gameState===State.MATCH) e.preventDefault();
+  const fresh=!keys[k];
   keys[k]=true;
   Audio2.resume();
   if(k==="escape" && gameState===State.MATCH){ $("hud-pause").click(); }
+  if(fresh && gameState===State.MATCH){
+    if(k==="t" && G) doTaunt(G.p1);                 // P1 taunt
+    if(k==="m" && G && G.twoPlayer) doTaunt(G.p2);  // P2 taunt (local versus)
+  }
 });
 window.addEventListener("keyup",e=>{ keys[e.key.toLowerCase()]=false; });
 // kick should be edge-triggered to avoid auto-spam; handle via cooldown in tryKick (kickCooldown), continuous ok.
@@ -2647,6 +2909,8 @@ function bindTouch(id,prop){
   el.addEventListener("mouseleave",off);
 }
 bindTouch("t-left","left"); bindTouch("t-right","right"); bindTouch("t-jump","jump"); bindTouch("t-kick","kick");
+// taunt button (edge-triggered, not a held control)
+(function(){ const el=$("t-taunt"); if(!el) return; const fire=e=>{ e.preventDefault(); if(G) doTaunt(G.p1); }; el.addEventListener("touchstart",fire,{passive:false}); el.addEventListener("mousedown",fire); })();
 
 /* ============================================================
    BOOT

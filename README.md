@@ -8,7 +8,10 @@ Just open `index.html` in any modern browser (or serve the folder with a tiny lo
 
 ## ✨ Features
 
-- **Game modes:** Quick Match, World Cup Chaos (random madness every few seconds), Tournament (8-team bracket), Daily Challenge (seeded), and local 2-Player.
+- **Game modes:** Quick Match, World Cup Chaos (random madness every few seconds), Tournament (8-team bracket), Daily Challenge (seeded), local 2-Player, and **Champions Run** (roguelite — draft stacking perk cards across 8 escalating matches; one loss ends the run).
+- **Super Shots:** every skin has a signature ultimate (Cannon Shot, Shadow Strike, Banana Curve, Zero-G Lob…) charged by a meter and unleashed with slow-mo and screen FX.
+- **Spectacular moves:** bicycle/overhead kicks and volleys that earn style points (→ bonus coins).
+- **Personality:** taunt/emote button, announcer call-outs, crowd "olé" chants, goal celebrations.
 - **Physics-driven arcade gameplay:** big-head characters, satisfying ball bounces, power-ups, spectacular goals.
 - **Power-ups:** Fire Shot, Freeze, Giant Head, Speed Boost, Mega Jump, Magnet Ball — plus chaos events (giant goals, low gravity, tornado, multi-ball, and more).
 - **Progression:** coins, 8 character skins, 6 ball skins, achievements/missions, local leaderboard.
