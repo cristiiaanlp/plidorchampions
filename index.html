@@ -908,6 +908,95 @@ let orientationBlocked = false;   // true on touch devices held in portrait
 let G = null;            // current match object
 let menuStadium = STADIUMS[0];
 
+/* ============================================================
+   LIVING ARENAS — interactive stadium props + permanent rules.
+   This is our differentiator: every pitch plays differently instead of
+   the flat rectangle every Head-Soccer clone uses. Props are resolved in
+   the ball's sub-step loop (so fast balls can't skip them).
+   ============================================================ */
+function arenaBumper(x,y,r,osc){
+  return {
+    x, baseX:x, y, r, osc:osc||0, phase:rand(0,TAU), flash:0,
+    update(){ if(this.osc){ this.phase+=0.025; this.x=this.baseX+Math.sin(this.phase)*this.osc; } if(this.flash>0)this.flash--; },
+    affectBall(b){
+      const dx=b.x-this.x, dy=b.y-this.y, d=Math.hypot(dx,dy), min=this.r+b.r;
+      if(d<min && d>0){
+        const nx=dx/d, ny=dy/d;
+        b.x=this.x+nx*min; b.y=this.y+ny*min;
+        const dot=b.vx*nx+b.vy*ny;
+        b.vx=(b.vx-2*dot*nx)*0.92 + nx*4.5;     // reflect + pinball boost
+        b.vy=(b.vy-2*dot*ny)*0.92 + ny*4.5;
+        this.flash=10; Audio2.SFX.bounce(); shake(3);
+        spawnParticles(b.x,b.y,8,{color:"#7fd3ff",spMin:2,spMax:5,decMin:0.05,decMax:0.1});
+      }
+    },
+    draw(){
+      const r=this.r+(this.flash>0?4:0);
+      const g=ctx.createRadialGradient(this.x,this.y,2,this.x,this.y,r+8);
+      g.addColorStop(0,this.flash>0?"#cdeeff":"#7fd3ff"); g.addColorStop(1,"rgba(70,200,255,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(this.x,this.y,r+8,0,TAU); ctx.fill();
+      ctx.fillStyle="#2aa9ff"; ctx.beginPath(); ctx.arc(this.x,this.y,r,0,TAU); ctx.fill();
+      ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.stroke();
+      ctx.fillStyle="#fff"; ctx.font="bold "+Math.round(r*0.9)+"px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("⚡",this.x,this.y+1);
+    }
+  };
+}
+function arenaTramp(x,w){
+  return {
+    x, w, flash:0,
+    update(){ if(this.flash>0)this.flash--; },
+    affectBall(b){
+      if(b.x>this.x-this.w/2 && b.x<this.x+this.w/2 && b.y+b.r>=GROUND-3 && b.vy>=-1){
+        b.vy = -(Math.abs(b.vy)*0.6 + 15);     // boing!
+        this.flash=10; Audio2.SFX.jump(); shake(2);
+        spawnParticles(b.x,GROUND,10,{color:"#ffe14d",up:2,decMin:0.04,decMax:0.08,sizeMin:2,sizeMax:5});
+      }
+    },
+    draw(){
+      const y=GROUND-6, sq=this.flash>0?4:0;
+      ctx.fillStyle="#b8862a"; ctx.fillRect(this.x-this.w/2, y+4, this.w, 10);
+      ctx.fillStyle=this.flash>0?"#fff07a":"#ffe14d";
+      roundRect(this.x-this.w/2, y-2-sq, this.w, 8, 4); ctx.fill();
+    }
+  };
+}
+function arenaGeyser(x){
+  return {
+    x, t:rint(60,160), active:0,
+    update(){ if(this.active>0)this.active--; else { this.t--; if(this.t<=0){ this.active=46; this.t=rint(170,280); Audio2.SFX.whistle(); } } },
+    forceBall(b){ if(this.active>0 && Math.abs(b.x-this.x)<32 && b.y<GROUND){ b.vy -= 2.4; b.vx += (Math.random()-0.5)*0.7; } },
+    affectChar(c){ if(this.active>0 && Math.abs(c.x-this.x)<30){ c.onGround=false; c.vy -= 2.6; } },
+    draw(){
+      ctx.fillStyle="#5a3a1a"; ctx.fillRect(this.x-18,GROUND-6,36,9);
+      ctx.fillStyle="#3a2410"; ctx.fillRect(this.x-12,GROUND-3,24,5);
+      if(this.active>0){
+        for(let i=0;i<3;i++) spawnParticles(this.x+rand(-10,10),GROUND-rand(0,30),1,
+          {color:pick(["#ff5a1f","#ffb347","#ffe14d"]),up:rand(5,10),grav:0.16,decMin:0.02,decMax:0.05,sizeMin:4,sizeMax:9,spMin:0,spMax:1});
+      }
+    }
+  };
+}
+// stadium id -> permanent rule (applied to mods) + interactive props
+const STADIUM_FX = {
+  classic: { label:"Pinball Posts ⚡", rule:null,
+             build:()=>[ arenaBumper(W*0.30,GROUND-140,20), arenaBumper(W*0.70,GROUND-140,20) ] },
+  beach:   { label:"Sea Breeze + Bouncers 🌬️", rule:m=>{ m.wind=0.16; m.windOsc=true; },
+             build:()=>[ arenaTramp(W*0.30,96), arenaTramp(W*0.70,96) ] },
+  snow:    { label:"Ice Rink ⛸️", rule:m=>{ m.friction=0.95; },
+             build:()=>[ arenaBumper(W*0.42,GROUND-105,22,90) ] },
+  night:   { label:"Low Gravity 🌙", rule:m=>{ m.ballGrav=0.6; m.charGrav=0.78; m.jump=1.2; },
+             build:()=>[ arenaBumper(W*0.30,GROUND-175,18), arenaBumper(W*0.70,GROUND-175,18) ] },
+  desert:  { label:"Lava Geysers 🌋", rule:null,
+             build:()=>[ arenaGeyser(W*0.35), arenaGeyser(W*0.65) ] }
+};
+function buildArena(id){ const fx=STADIUM_FX[id]; return (fx&&fx.build)?fx.build():[]; }
+function applyArenaRule(mods){ const fx=G&&G.stadium?STADIUM_FX[G.stadium.id]:null; if(fx&&fx.rule) fx.rule(mods); }
+function updateArena(){ if(G.arena) for(const e of G.arena) e.update&&e.update(); }
+function arenaForceBalls(){ if(G.arena) for(const e of G.arena){ if(e.forceBall) for(const b of allBalls()) e.forceBall(b); } }
+function arenaAffectChars(){ if(G.arena) for(const e of G.arena){ if(e.affectChar){ e.affectChar(G.p1); e.affectChar(G.p2); } } }
+function drawArena(){ if(G.arena) for(const e of G.arena) e.draw&&e.draw(); }
+
 function makeCharacter(side, isAI, skinId){
   const sk = SKINS[skinId] || SKINS.classic;
   const x = side==="L" ? W*0.27 : W*0.73;
@@ -957,6 +1046,7 @@ function startMatch(opts){
     extraBalls:[],
     mods:null
   };
+  G.arena = buildArena(stadium.id);   // interactive props for this stadium
   resetMods();
   resetBall(G.kickoffSide);
   G.showTutorial = !SAVE.tutorialSeen && !opts.twoPlayer;  // first-time controls hint
@@ -967,6 +1057,8 @@ function startMatch(opts){
   $("hud").classList.add("active");
   if(isTouch) $("touch").classList.add("active");
   updateHUD();
+  const sfx=STADIUM_FX[stadium.id];
+  if(sfx) showToast(`${stadium.name}: ${sfx.label}`);
   Audio2.SFX.whistle();
   flash(0.3,"#ffffff");
   Audio2.startMusic();
@@ -992,6 +1084,7 @@ function resetMods(){
     explosive:false, magnetAll:false, giantHeads:false,
     goalH:GOAL_H, goalTop:GROUND-GOAL_H
   };
+  applyArenaRule(G.mods);   // permanent per-stadium rule (ice, low gravity, breeze…)
   if(G.ball) G.ball.r=15;
   if(G.extraBalls) G.extraBalls.length=0;
 }
@@ -1079,6 +1172,8 @@ function matchStep(input){
     if(G.chaosTimer<=0){ triggerChaos(); G.chaosTimer=G.chaosInterval*60; }
   }
 
+  updateArena();   // tick interactive props (geyser timers, moving bumpers)
+
   // ---- player 1 control ----
   controlChar(G.p1, input.p1);
   // ---- player 2: human (local versus) or AI ----
@@ -1087,7 +1182,9 @@ function matchStep(input){
 
   stepChar(G.p1);
   stepChar(G.p2);
-  for(const b of allBalls()) stepBall(b);
+  arenaAffectChars();                 // geysers launch players, etc.
+  for(const b of allBalls()) stepBall(b);   // bumpers/tramps resolved inside its sub-steps
+  arenaForceBalls();                  // zone forces (geyser updraft) once per frame
   updateActiveFx();
   handleCollisions();
   for(const b of allBalls()){ if(checkGoal(b)) break; }
@@ -1188,6 +1285,8 @@ function stepBall(b){
     // player collisions every sub-step (this is what stops tunnelling)
     if(G.p1) charBall(G.p1,b);
     if(G.p2) charBall(G.p2,b);
+    // interactive arena props (bumpers, trampolines) — also per sub-step
+    if(G.arena) for(const e of G.arena) if(e.affectBall) e.affectBall(b);
   }
   b.vr*=0.985;
   // ---- timers + fx (once per frame) ----
@@ -2013,6 +2112,7 @@ function loop(ts){
     drawStadium(G.stadium, t);
     drawWeather(G.stadium);
     if(G.chaos) drawChaosWind(t);
+    drawArena();
     drawPowerupsField();
     // draw characters & ball (depth: characters behind ball if ball lower)
     drawCharacter(G.p2, t);

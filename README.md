@@ -12,7 +12,7 @@ Just open `index.html` in any modern browser (or serve the folder with a tiny lo
 - **Physics-driven arcade gameplay:** big-head characters, satisfying ball bounces, power-ups, spectacular goals.
 - **Power-ups:** Fire Shot, Freeze, Giant Head, Speed Boost, Mega Jump, Magnet Ball — plus chaos events (giant goals, low gravity, tornado, multi-ball, and more).
 - **Progression:** coins, 8 character skins, 6 ball skins, achievements/missions, local leaderboard.
-- **5 stadiums** with unique weather/effects.
+- **Living Arenas** — 5 interactive stadiums, each with a permanent physics rule (ice rink, low gravity, sea breeze) and props you and the ball bounce off (pinball bumpers, trampolines, erupting lava geysers). No two pitches play the same.
 - **Polish:** camera shake, particles, confetti, fireworks, synthesized audio, screen flash, haptics.
 - **Save:** progress, stats and settings persist in `localStorage`.
 - **Platform-ready:** loading screen, ad hooks (CrazyGames / Poki SDK with local stub), rewarded/interstitial flow.
